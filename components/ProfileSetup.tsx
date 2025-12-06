@@ -1,18 +1,30 @@
 import React, { useState } from 'react';
 import { UserProfile, DietaryRestrictions } from '../types';
 import { DEFAULT_DIETARY_RESTRICTIONS, DIETARY_LABELS } from '../constants';
+import { Volume2, VolumeX, ArrowLeft } from 'lucide-react';
 
 interface ProfileSetupProps {
   onSave: (profile: UserProfile) => void;
-  speak: (text: string) => void;
+  speak: (text: string, force?: boolean) => void;
+  voiceEnabled: boolean;
+  toggleVoice: () => void;
+  initialData?: UserProfile | null;
+  onBack?: () => void;
 }
 
-const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSave, speak }) => {
-  const [name, setName] = useState('');
-  const [dietary, setDietary] = useState<DietaryRestrictions>(DEFAULT_DIETARY_RESTRICTIONS);
-  const [customRestrictions, setCustomRestrictions] = useState('');
-  const [brands, setBrands] = useState('');
-  const [goals, setGoals] = useState('');
+const ProfileSetup: React.FC<ProfileSetupProps> = ({ 
+  onSave, 
+  speak, 
+  voiceEnabled, 
+  toggleVoice,
+  initialData,
+  onBack
+}) => {
+  const [name, setName] = useState(initialData?.name || '');
+  const [dietary, setDietary] = useState<DietaryRestrictions>(initialData?.dietaryRestrictions || DEFAULT_DIETARY_RESTRICTIONS);
+  const [customRestrictions, setCustomRestrictions] = useState(initialData?.customRestrictions || '');
+  const [brands, setBrands] = useState(initialData?.preferredBrands || '');
+  const [goals, setGoals] = useState(initialData?.healthGoals || '');
 
   const handleDietaryChange = (key: keyof DietaryRestrictions) => {
     setDietary(prev => {
@@ -40,9 +52,35 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSave, speak }) => {
 
   return (
     <div className="w-full max-w-3xl mx-auto p-4 md:p-6 pb-24 min-h-[100dvh]">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 md:mb-8 text-yellow-300 border-b-2 border-yellow-600 pb-4">
-        Profile Setup
-      </h1>
+      <div className="flex justify-between items-center mb-6 md:mb-8 border-b-2 border-yellow-600 pb-4">
+        <div className="flex items-center gap-3 md:gap-4">
+          {onBack && (
+            <button 
+              onClick={onBack}
+              className="p-2 md:p-3 rounded-full border-2 border-zinc-600 bg-zinc-800 text-yellow-400 hover:bg-zinc-700 hover:border-yellow-600 transition-colors"
+              aria-label="Go back"
+            >
+              <ArrowLeft size={24} className="md:w-8 md:h-8" />
+            </button>
+          )}
+          <h1 className="text-3xl md:text-4xl font-bold text-yellow-300">
+            Profile Setup
+          </h1>
+        </div>
+        
+        <button
+          onClick={toggleVoice}
+          className={`
+            p-3 rounded-full border-2 transition-colors flex items-center gap-2
+            ${voiceEnabled ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-zinc-800 text-zinc-400 border-zinc-600'}
+          `}
+          aria-label={voiceEnabled ? "Disable voice feedback" : "Enable voice feedback"}
+          aria-pressed={voiceEnabled}
+        >
+          {voiceEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
+          <span className="text-sm font-bold hidden md:inline">{voiceEnabled ? 'Voice On' : 'Voice Off'}</span>
+        </button>
+      </div>
 
       <div className="space-y-6 md:space-y-8">
         {/* Name */}

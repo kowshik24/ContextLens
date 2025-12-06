@@ -22,7 +22,18 @@ export enum AppMode {
   DOCUMENT = 'Document Reading',
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  image?: string;
+  timestamp: number;
+  isHazard?: boolean;
+  suggestions?: string[];
+}
+
 export interface AnalysisResult {
   text: string;
   timestamp: number;
+  suggestions?: string[];
 }

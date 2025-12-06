@@ -24,9 +24,17 @@ const createSystemInstruction = (mode: AppMode, profile: UserProfile): string =>
   const responseFormat = `
     RESPONSE FORMATTING RULES:
     1. Start with the most important information immediately (especially safety warnings).
-    2. Use simple, clear, and direct language.
-    3. Keep sentences short and easy to listen to via text-to-speech.
-    4. End with a clear recommendation or specific next step.
+    2. Use simple, clear, and direct language suitable for text-to-speech.
+    3. Keep sentences short.
+    4. If a safety hazard or dietary violation is found, start with "⚠️ WARNING".
+    
+    IMPORTANT: You MUST provide 3 short, relevant follow-up actions.
+    Format them strictly at the very end of your response using this EXACT format:
+    |||Action 1|Action 2|Action 3
+    
+    Example output:
+    This soup is high in sodium (890mg). It exceeds your low-sodium limit.
+    |||Suggest Low-Sodium Option|Read Ingredients|Check Serving Size
   `;
 
   let roleInstruction = "";
@@ -35,38 +43,30 @@ const createSystemInstruction = (mode: AppMode, profile: UserProfile): string =>
     case AppMode.SHOPPING:
       roleInstruction = `You are a shopping assistant for a visually impaired user.
       
-      CORE TASKS:
-      1. IDENTIFY: Identify all visible products, specifically noting brand names and flavors/variants.
-      2. ANALYZE LABELS: Read nutritional info (Calories, Sodium, Sugar) and Ingredients list.
-      3. CHECK EXPIRATION: Look for "Best By", "Use By", or Expiry dates and state them if visible.
-      4. SAFETY & DIET CHECK:
-         - Compare found info strictly against the User Profile.
-         - Always check for: Calories, Sodium, Sugar, and Allergens relative to the user's health goals.
-         - IF A RESTRICTION IS VIOLATED (e.g., allergen found, too much sodium): Start your response with "⚠️ WARNING: Contains [allergen/ingredient]".
-      5. RECOMMENDATION:
-         - If the product is safe/healthy: Recommend it based on their goals.
-         - If unsafe/unhealthy: Explicitly advise against it and suggest an alternative if visible or generally known (e.g., "This is high in sodium. Look for the low-sodium version").`;
+      TASKS:
+      1. Identify visible products, brands, and variants.
+      2. Analyze nutrition facts and ingredients if visible.
+      3. Compare strictly against the User Profile.
+      4. Warn explicitly if a restriction is violated.`;
       break;
 
     case AppMode.APPLIANCE:
       roleInstruction = `You are an appliance helper for a visually impaired user.
       
-      CORE TASKS:
-      1. IDENTIFY: The specific brand and model of the appliance.
-      2. SPATIAL ORIENTATION: Locate the power button, main controls, and displays. Describe their position relative to the user (e.g., "top right corner", "large round dial in the center").
-         - Assume the user cannot see small text or icons.
-      3. HAZARD DETECTION: Identify potential hazards (hot surfaces, sharp blades, moving parts) and warn about them immediately.
-      4. INSTRUCTION: Provide numbered, step-by-step instructions to achieve the user's specific goal or question.`;
+      TASKS:
+      1. Identify the appliance model.
+      2. Orient the user spatially (e.g., "knob is on the right"). Assume they cannot see small labels.
+      3. Identify hazards (hot surfaces, blades).
+      4. Provide numbered steps for their goal.`;
       break;
 
     case AppMode.DOCUMENT:
       roleInstruction = `You are a document reader for a visually impaired user.
       
-      CORE TASKS:
-      1. READ: Read the text clearly and accurately.
-      2. SUMMARIZE: Provide a brief summary of the document's purpose first.
-      3. HIGHLIGHT: Extract action items, specific deadlines, due dates, or payment amounts.
-      4. SIMPLIFY: Explain complex legal or medical terms in simple language.`;
+      TASKS:
+      1. Summarize the document's purpose.
+      2. Extract action items, deadlines, and amounts.
+      3. Simplify complex terms.`;
       break;
   }
 
@@ -74,10 +74,11 @@ const createSystemInstruction = (mode: AppMode, profile: UserProfile): string =>
 };
 
 export const analyzeImageAndQuery = async (
-  base64Image: string,
+  base64Image: string | null,
   userQuery: string,
   mode: AppMode,
-  profile: UserProfile
+  profile: UserProfile,
+  previousHistory: string = ""
 ): Promise<string> => {
   if (!apiKey) {
     return "Error: API Key is missing. Please check your environment configuration.";
@@ -86,37 +87,56 @@ export const analyzeImageAndQuery = async (
   try {
     const systemInstruction = createSystemInstruction(mode, profile);
     
-    // Using gemini-2.5-flash for multimodal capabilities (text + image)
+    // Using gemini-2.5-flash for speed and multimodal capabilities
     const model = 'gemini-2.5-flash';
 
-    // Prepare content parts
-    // We strip the data prefix if present because the API expects just the base64 string
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+    const parts: any[] = [];
+
+    // Add image part if exists
+    if (base64Image) {
+      const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+      parts.push({
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: cleanBase64
+        }
+      });
+    }
+
+    // Context handling: If we had a real history array, we would map it here.
+    // For now, we append the query.
+    let promptText = userQuery;
+    if (!promptText) {
+      if (base64Image) {
+        promptText = "Describe what is in this image and help me understand it based on my needs.";
+      } else {
+        return "Please ask a question or provide an image.";
+      }
+    }
+
+    // Add previous context if provided (simple concatenation for this demo)
+    if (previousHistory) {
+      parts.push({ text: `PREVIOUS CONTEXT:\n${previousHistory}\n\nCURRENT REQUEST: ${promptText}` });
+    } else {
+      parts.push({ text: promptText });
+    }
 
     const response = await ai.models.generateContent({
       model: model,
       contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'image/jpeg', // Assuming JPEG for simplicity from capture
-              data: cleanBase64
-            }
-          },
-          {
-            text: userQuery || "Describe what is in this image and help me understand it based on my needs."
-          }
-        ]
+        parts: parts
       },
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.4, // Lower temperature for more accurate factual reading
+        temperature: 0.4,
+        // Leverage thinking budget for deeper reasoning on safety/diet checks
+        thinkingConfig: { thinkingBudget: 1024 } 
       }
     });
 
     return response.text || "I couldn't generate a description. Please try again.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "I'm sorry, I encountered an error analyzing the image. Please try again.";
+    return "I'm sorry, I encountered an error. Please try again.";
   }
 };
