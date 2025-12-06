@@ -1,0 +1,8 @@
+{
+  "name": "ContextLens",
+  "description": "An AI-powered context-aware assistant designed for visually impaired and elderly users to help with shopping, appliance usage, and document reading.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
